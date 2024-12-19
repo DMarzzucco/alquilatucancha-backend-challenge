@@ -11,36 +11,32 @@ import {
 } from '../ports/aquila-tu-cancha.client';
 
 @QueryHandler(GetAvailabilityQuery)
-export class GetAvailabilityHandler
-  implements IQueryHandler<GetAvailabilityQuery>
-{
+export class GetAvailabilityHandler implements IQueryHandler<GetAvailabilityQuery> {
+
   constructor(
     @Inject(ALQUILA_TU_CANCHA_CLIENT)
     private alquilaTuCanchaClient: AlquilaTuCanchaClient,
-  ) {}
+  ) { }
 
   async execute(query: GetAvailabilityQuery): Promise<ClubWithAvailability[]> {
-    const clubs_with_availability: ClubWithAvailability[] = [];
+    
     const clubs = await this.alquilaTuCanchaClient.getClubs(query.placeId);
-    for (const club of clubs) {
-      const courts = await this.alquilaTuCanchaClient.getCourts(club.id);
-      const courts_with_availability: ClubWithAvailability['courts'] = [];
-      for (const court of courts) {
-        const slots = await this.alquilaTuCanchaClient.getAvailableSlots(
-          club.id,
-          court.id,
-          query.date,
+
+    const clubsWithCourts = await Promise.all(
+      clubs.map(async (club) => {
+        const courts = await this.alquilaTuCanchaClient.getCourts(club.id);
+
+        const courtsWithAvailability = await Promise.all(
+          courts.map(async (court) => {
+            const slots = await this.alquilaTuCanchaClient.getAvailableSlots(club.id, court.id, query.date);
+
+            return { ...court, available: slots };
+          })
         );
-        courts_with_availability.push({
-          ...court,
-          available: slots,
-        });
-      }
-      clubs_with_availability.push({
-        ...club,
-        courts: courts_with_availability,
-      });
-    }
-    return clubs_with_availability;
+        return { ...club, courts: courtsWithAvailability };
+
+      })
+    );
+    return clubsWithCourts;
   }
 }
